@@ -7,6 +7,7 @@
     "ClientConnectionMixin",
     "ParticleS2CPacketMixin",
     "ServerCommonNetworkHandlerAccessor",
+    "ServerCommonNetworkHandlerMixin",
     "ServerPlayNetworkHandlerMixin"
   ],
   "injectors": {
