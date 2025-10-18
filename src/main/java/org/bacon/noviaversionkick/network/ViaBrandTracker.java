@@ -6,9 +6,14 @@ import org.apache.logging.log4j.Logger;
 import org.bacon.noviaversionkick.mixin.ClientConnectionAccessor;
 
 import java.net.SocketAddress;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
@@ -131,18 +136,176 @@ public final class ViaBrandTracker {
                 LOGGER.info("No brand recorded; modern particles will be used");
                 return false;
             }
-            String normalized = brand.trim().toLowerCase(Locale.ROOT);
-            if (normalized.isEmpty()) {
+            BrandMetadata metadata = BrandMetadata.fromRawBrand(brand);
+            if (!metadata.hasComponents()) {
                 LOGGER.info("Brand string was empty after normalization; modern particles will be used");
                 return false;
             }
-            boolean fabricDetected = normalized.contains("fabric");
             LOGGER.info(
-                "Normalized brand='{}'; fabricDetected={}",
-                normalized,
-                fabricDetected
+                "Brand analysis for {}: components={}, primaryPlatform='{}', viaWrappers={}",
+                describeConnection(connection),
+                metadata.describeComponents(),
+                metadata.primaryPlatform(),
+                Arrays.toString(metadata.viaWrappers())
             );
-            return fabricDetected;
+            if (metadata.requiresLegacyParticles()) {
+                LOGGER.info(
+                    "Detected Via wrapper(s) {} with base platform '{}'; legacy particle encoding will be used to avoid the 9-byte overflow",
+                    Arrays.toString(metadata.viaWrappers()),
+                    metadata.primaryPlatform()
+                );
+                return true;
+            }
+            if (metadata.primaryPlatform() == null) {
+                LOGGER.info("Unable to determine a primary platform; defaulting to modern particles");
+                return false;
+            }
+            LOGGER.info(
+                "Primary platform '{}' does not require legacy particle encoding; modern particles will be used",
+                metadata.primaryPlatform()
+            );
+            return false;
+        }
+
+        private static final class BrandMetadata {
+            private final String[] components;
+            private final String primaryPlatform;
+            private final String[] viaWrappers;
+            private final boolean requiresLegacyParticles;
+
+            private BrandMetadata(String[] components, String primaryPlatform, String[] viaWrappers, boolean requiresLegacyParticles) {
+                this.components = components;
+                this.primaryPlatform = primaryPlatform;
+                this.viaWrappers = viaWrappers;
+                this.requiresLegacyParticles = requiresLegacyParticles;
+            }
+
+            static BrandMetadata fromRawBrand(String rawBrand) {
+                if (rawBrand == null) {
+                    return new BrandMetadata(new String[0], null, new String[0], false);
+                }
+                String sanitized = rawBrand.trim();
+                if (sanitized.isEmpty()) {
+                    return new BrandMetadata(new String[0], null, new String[0], false);
+                }
+                String[] fragments = sanitized.split("\\u0000");
+                Set<String> orderedComponents = new LinkedHashSet<>();
+                for (String fragment : fragments) {
+                    if (fragment == null) {
+                        continue;
+                    }
+                    String trimmed = fragment.trim();
+                    if (trimmed.isEmpty()) {
+                        continue;
+                    }
+                    orderedComponents.add(trimmed.toLowerCase(Locale.ROOT));
+                }
+                if (orderedComponents.isEmpty()) {
+                    orderedComponents.add(sanitized.toLowerCase(Locale.ROOT));
+                }
+                List<String> viaWrappers = new ArrayList<>();
+                String primaryPlatform = null;
+                boolean requiresLegacy = false;
+                for (String component : orderedComponents) {
+                    if (component.startsWith("via")) {
+                        viaWrappers.add(component);
+                        requiresLegacy = true;
+                        if (primaryPlatform == null) {
+                            String inferred = inferPlatformFromVia(component);
+                            if (inferred != null) {
+                                primaryPlatform = inferred;
+                            }
+                        }
+                        continue;
+                    }
+                    String normalizedPlatform = normalizePlatform(component);
+                    if (normalizedPlatform != null && primaryPlatform == null) {
+                        primaryPlatform = normalizedPlatform;
+                        continue;
+                    }
+                    if (primaryPlatform == null) {
+                        primaryPlatform = component;
+                    }
+                }
+                if (primaryPlatform == null && !orderedComponents.isEmpty()) {
+                    primaryPlatform = orderedComponents.iterator().next();
+                }
+                return new BrandMetadata(
+                    orderedComponents.toArray(new String[0]),
+                    primaryPlatform,
+                    viaWrappers.toArray(new String[0]),
+                    requiresLegacy
+                );
+            }
+
+            boolean hasComponents() {
+                return this.components.length > 0;
+            }
+
+            String describeComponents() {
+                return Arrays.toString(this.components);
+            }
+
+            String primaryPlatform() {
+                return this.primaryPlatform;
+            }
+
+            String[] viaWrappers() {
+                return this.viaWrappers;
+            }
+
+            boolean requiresLegacyParticles() {
+                return this.requiresLegacyParticles;
+            }
+
+            private static String normalizePlatform(String component) {
+                if (component == null || component.isEmpty()) {
+                    return null;
+                }
+                if (component.equals("fabric") || component.equals("fabricmc")) {
+                    return "fabric";
+                }
+                if (component.equals("quilt")) {
+                    return "quilt";
+                }
+                if (component.equals("forge")) {
+                    return "forge";
+                }
+                if (component.equals("neoforge")) {
+                    return "neoforge";
+                }
+                if (component.equals("vanilla")) {
+                    return "vanilla";
+                }
+                return null;
+            }
+
+            private static String inferPlatformFromVia(String viaComponent) {
+                if (viaComponent == null || viaComponent.length() <= 3) {
+                    return null;
+                }
+                String suffix = viaComponent.substring(3);
+                if (suffix.isEmpty()) {
+                    return null;
+                }
+                String simplified = suffix.replace("-", "").replace("_", "");
+                if (simplified.startsWith("fabric")) {
+                    return "fabric";
+                }
+                if (simplified.startsWith("forge")) {
+                    return "forge";
+                }
+                if (simplified.startsWith("neoforge")) {
+                    return "neoforge";
+                }
+                if (simplified.startsWith("quilt")) {
+                    return "quilt";
+                }
+                if (simplified.startsWith("vanilla")) {
+                    return "vanilla";
+                }
+                return null;
+            }
         }
     }
 }
