@@ -4,6 +4,8 @@ import net.minecraft.network.ClientConnection;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
 import net.minecraft.particle.ParticleEffect;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import net.minecraft.particle.ParticleTypes;
 import org.bacon.noviaversionkick.network.PacketConnectionAttachment;
 import org.bacon.noviaversionkick.network.ViaBrandTracker;
@@ -52,15 +54,26 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
         if (effect == null) {
             return;
         }
-        ParticleTypes.PACKET_CODEC.encode(buf, effect);
-        buf.writeBoolean(this.forceSpawn);
-        buf.writeDouble(this.x);
-        buf.writeDouble(this.y);
-        buf.writeDouble(this.z);
-        buf.writeFloat(this.offsetX);
-        buf.writeFloat(this.offsetY);
-        buf.writeFloat(this.offsetZ);
-        buf.writeFloat(this.speed);
-        buf.writeInt(this.count);
+        ByteBuf backing = Unpooled.buffer();
+        try {
+            RegistryByteBuf encoded = new RegistryByteBuf(backing, buf.getRegistryManager());
+            ParticleTypes.PACKET_CODEC.encode(encoded, effect);
+            int particleId = encoded.readVarInt();
+
+            buf.writeVarInt(particleId);
+            buf.writeBoolean(this.forceSpawn);
+            buf.writeDouble(this.x);
+            buf.writeDouble(this.y);
+            buf.writeDouble(this.z);
+            buf.writeFloat(this.offsetX);
+            buf.writeFloat(this.offsetY);
+            buf.writeFloat(this.offsetZ);
+            buf.writeFloat(this.speed);
+            buf.writeInt(this.count);
+
+            buf.writeBytes(encoded);
+        } finally {
+            backing.release();
+        }
     }
 }
