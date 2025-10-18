@@ -4,6 +4,7 @@
   "package": "org.bacon.noviaversionkick.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ClientConnectionAccessor",
     "ClientConnectionMixin",
     "ParticleS2CPacketMixin",
     "ServerCommonNetworkHandlerAccessor",

@@ -1,13 +1,18 @@
 package org.bacon.noviaversionkick.network;
 
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelPipeline;
 import net.minecraft.network.ClientConnection;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bacon.noviaversionkick.mixin.ClientConnectionAccessor;
 
 import java.net.SocketAddress;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
@@ -17,6 +22,12 @@ import java.util.WeakHashMap;
 public final class ViaBrandTracker {
     private static final Logger LOGGER = LogManager.getLogger("Noviaversionkick");
     private static final Map<ClientConnection, ClientInfo> CLIENTS = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Set<String> VIA_HANDLER_PACKAGE_PREFIXES = Set.of(
+        "com.viaversion.",
+        "net.raphimc.",
+        "net.lenni0451."
+    );
+
     private ViaBrandTracker() {
     }
 
@@ -136,12 +147,51 @@ public final class ViaBrandTracker {
                 return false;
             }
             boolean fabricDetected = normalized.contains("fabric");
+            boolean viaHandlersDetected = connectionHasViaHandlers(connection);
             LOGGER.info(
-                "Normalized brand='{}'; fabricDetected={}",
+                "Normalized brand='{}'; fabricDetected={}; viaHandlersDetected={}",
                 normalized,
-                fabricDetected
+                fabricDetected,
+                viaHandlersDetected
             );
-            return fabricDetected;
+            return fabricDetected && viaHandlersDetected;
         }
+    }
+
+    private static boolean connectionHasViaHandlers(ClientConnection connection) {
+        if (connection == null) {
+            return false;
+        }
+        Channel channel = ((ClientConnectionAccessor) connection).noviaversionkick$getChannel();
+        if (channel == null) {
+            return false;
+        }
+        ChannelPipeline pipeline = channel.pipeline();
+        for (Map.Entry<String, ChannelHandler> entry : pipeline) {
+            ChannelHandler handler = entry.getValue();
+            if (handler == null) {
+                continue;
+            }
+            if (isViaHandler(handler.getClass())) {
+                LOGGER.info(
+                    "Detected Via handler '{}' of type {} on {}",
+                    entry.getKey(),
+                    handler.getClass().getName(),
+                    describeConnection(connection)
+                );
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isViaHandler(Class<?> handlerClass) {
+        String name = handlerClass.getName();
+        for (String prefix : VIA_HANDLER_PACKAGE_PREFIXES) {
+            if (name.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
