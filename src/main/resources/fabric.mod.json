@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "noviaversionkick",
+  "version": "${version}",
+
+  "name": "NoViaVersionKick",
+  "description": "",
+  "authors": [],
+  "contact": {},
+
+  "license": "Apache-2.0",
+  "icon": "assets/noviaversionkick/icon.png",
+
+  "environment": "server",
+  "entrypoints": {
+    "fabric-datagen": ["org.bacon.noviaversionkick.client.NoviaversionkickDataGenerator"],
+    "main": ["org.bacon.noviaversionkick.Noviaversionkick"]
+  },
+
+  "mixins": [
+    "noviaversionkick.mixins.json"
+    ,{
+      "config": "noviaversionkick.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
