@@ -9,6 +9,7 @@
     "ParticleS2CPacketMixin",
     "ServerCommonNetworkHandlerAccessor",
     "ServerCommonNetworkHandlerMixin",
+    "ServerLoginNetworkHandlerAccessor",
     "ServerPlayNetworkHandlerMixin"
   ],
   "injectors": {

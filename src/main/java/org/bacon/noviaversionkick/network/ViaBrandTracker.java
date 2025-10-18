@@ -8,6 +8,7 @@ import org.bacon.noviaversionkick.mixin.ClientConnectionAccessor;
 import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -73,6 +74,48 @@ public final class ViaBrandTracker {
         }
     }
 
+    public static void setClientModList(ClientConnection connection, Collection<String> mods) {
+        LOGGER.info(
+            "setClientModList called for connection={} with {} mods",
+            describeConnection(connection),
+            mods == null ? 0 : mods.size()
+        );
+        if (connection == null) {
+            LOGGER.info("Ignoring setClientModList call because connection was null");
+            return;
+        }
+        synchronized (CLIENTS) {
+            ClientInfo info = CLIENTS.get(connection);
+            if (mods == null) {
+                if (info != null) {
+                    LOGGER.info("Clearing client mod list for {}", describeConnection(connection));
+                    info.setClientMods(null);
+                    info.resetLegacyDecisionLog();
+                    if (info.isEmpty()) {
+                        LOGGER.info("No remaining data for {}; removing client entry", describeConnection(connection));
+                        CLIENTS.remove(connection);
+                    }
+                } else {
+                    LOGGER.info("No mod list stored for {}; nothing to clear", describeConnection(connection));
+                }
+                return;
+            }
+            if (info == null) {
+                LOGGER.info("Creating new tracking entry for {} to store mod list", describeConnection(connection));
+                info = new ClientInfo();
+                CLIENTS.put(connection, info);
+            }
+            info.setClientMods(mods);
+            info.resetLegacyDecisionLog();
+            LOGGER.info(
+                "Recorded {} client mods for {}: {}",
+                info.describeClientModCount(),
+                describeConnection(connection),
+                info.describeClientMods()
+            );
+        }
+    }
+
     public static boolean shouldUseLegacyParticles(ClientConnection connection) {
         if (connection == null) {
             return false;
@@ -99,10 +142,30 @@ public final class ViaBrandTracker {
 
     private static final class ClientInfo {
         private volatile String brand;
+        private volatile Set<String> clientMods;
         private volatile Boolean lastLegacyDecision;
 
         void setBrand(String brand) {
             this.brand = brand;
+        }
+
+        void setClientMods(Collection<String> mods) {
+            if (mods == null || mods.isEmpty()) {
+                this.clientMods = null;
+                return;
+            }
+            Set<String> normalized = new LinkedHashSet<>();
+            for (String mod : mods) {
+                if (mod == null) {
+                    continue;
+                }
+                String trimmed = mod.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                normalized.add(trimmed.toLowerCase(Locale.ROOT));
+            }
+            this.clientMods = normalized.isEmpty() ? null : normalized;
         }
 
         synchronized boolean shouldUseLegacyParticles(ClientConnection connection) {
@@ -132,19 +195,27 @@ public final class ViaBrandTracker {
         }
 
         boolean isEmpty() {
-            return this.brand == null;
+            return this.brand == null && (this.clientMods == null || this.clientMods.isEmpty());
+        }
+
+        String describeClientModCount() {
+            Set<String> mods = this.clientMods;
+            return mods == null ? "0" : Integer.toString(mods.size());
+        }
+
+        String describeClientMods() {
+            Set<String> mods = this.clientMods;
+            if (mods == null || mods.isEmpty()) {
+                return "[]";
+            }
+            return mods.toString();
         }
 
         private boolean computeLegacyDecision(ClientConnection connection) {
             String brand = this.brand;
-            if (brand == null) {
-                LOGGER.info("No brand recorded; modern particles will be used");
-                return false;
-            }
             BrandMetadata metadata = BrandMetadata.fromRawBrand(brand);
             if (!metadata.hasComponents()) {
                 LOGGER.info("Brand string was empty after normalization; modern particles will be used");
-                return false;
             }
             LOGGER.info(
                 "Brand analysis for {}: components={}, primaryPlatform='{}', viaWrappers={}",
@@ -153,23 +224,57 @@ public final class ViaBrandTracker {
                 metadata.primaryPlatform(),
                 Arrays.toString(metadata.viaWrappers())
             );
-            if (metadata.requiresLegacyParticles()) {
+
+            Set<String> mods = this.clientMods;
+            List<String> viaMods = mods == null ? List.of() : mods.stream().filter(id -> id.startsWith("via")).toList();
+
+            boolean requiresLegacy = metadata.requiresLegacyParticles() || !viaMods.isEmpty();
+            String primaryPlatform = metadata.primaryPlatform();
+            if (primaryPlatform == null) {
+                primaryPlatform = inferPlatformFromMods(mods);
+            }
+
+            if (requiresLegacy) {
+                List<String> viaSources = new ArrayList<>();
+                viaSources.addAll(Arrays.asList(metadata.viaWrappers()));
+                viaSources.addAll(viaMods);
                 LOGGER.info(
                     "Detected Via wrapper(s) {} with base platform '{}'; legacy particle encoding will be used to avoid the 9-byte overflow",
-                    Arrays.toString(metadata.viaWrappers()),
-                    metadata.primaryPlatform()
+                    viaSources,
+                    primaryPlatform
                 );
                 return true;
             }
-            if (metadata.primaryPlatform() == null) {
-                LOGGER.info("Unable to determine a primary platform; defaulting to modern particles");
+
+            if (primaryPlatform == null) {
+                LOGGER.info("Unable to determine a primary platform from brand or mod list; defaulting to modern particles");
                 return false;
             }
+
             LOGGER.info(
                 "Primary platform '{}' does not require legacy particle encoding; modern particles will be used",
-                metadata.primaryPlatform()
+                primaryPlatform
             );
             return false;
+        }
+
+        private static String inferPlatformFromMods(Set<String> mods) {
+            if (mods == null || mods.isEmpty()) {
+                return null;
+            }
+            if (mods.contains("fabricloader")) {
+                return "fabric";
+            }
+            if (mods.contains("quilt_loader") || mods.contains("quiltloader")) {
+                return "quilt";
+            }
+            if (mods.contains("forge")) {
+                return "forge";
+            }
+            if (mods.contains("neoforge")) {
+                return "neoforge";
+            }
+            return null;
         }
 
         private static final class BrandMetadata {
