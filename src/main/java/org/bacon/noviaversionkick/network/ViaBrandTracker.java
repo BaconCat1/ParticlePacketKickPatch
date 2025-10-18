@@ -148,6 +148,14 @@ public final class ViaBrandTracker {
                 metadata.primaryPlatform(),
                 Arrays.toString(metadata.viaWrappers())
             );
+            if (metadata.requiresLegacyParticles()) {
+                LOGGER.info(
+                    "Detected Via wrapper(s) {} with base platform '{}'; legacy particle encoding will be used to avoid the 9-byte overflow",
+                    Arrays.toString(metadata.viaWrappers()),
+                    metadata.primaryPlatform()
+                );
+                return true;
+            }
             if (metadata.primaryPlatform() == null) {
                 LOGGER.info("Unable to determine a primary platform; defaulting to modern particles");
                 return false;
@@ -163,20 +171,22 @@ public final class ViaBrandTracker {
             private final String[] components;
             private final String primaryPlatform;
             private final String[] viaWrappers;
+            private final boolean requiresLegacyParticles;
 
-            private BrandMetadata(String[] components, String primaryPlatform, String[] viaWrappers) {
+            private BrandMetadata(String[] components, String primaryPlatform, String[] viaWrappers, boolean requiresLegacyParticles) {
                 this.components = components;
                 this.primaryPlatform = primaryPlatform;
                 this.viaWrappers = viaWrappers;
+                this.requiresLegacyParticles = requiresLegacyParticles;
             }
 
             static BrandMetadata fromRawBrand(String rawBrand) {
                 if (rawBrand == null) {
-                    return new BrandMetadata(new String[0], null, new String[0]);
+                    return new BrandMetadata(new String[0], null, new String[0], false);
                 }
                 String sanitized = rawBrand.trim();
                 if (sanitized.isEmpty()) {
-                    return new BrandMetadata(new String[0], null, new String[0]);
+                    return new BrandMetadata(new String[0], null, new String[0], false);
                 }
                 String[] fragments = sanitized.split("\\u0000");
                 Set<String> orderedComponents = new LinkedHashSet<>();
@@ -195,10 +205,25 @@ public final class ViaBrandTracker {
                 }
                 List<String> viaWrappers = new ArrayList<>();
                 String primaryPlatform = null;
+                boolean requiresLegacy = false;
                 for (String component : orderedComponents) {
                     if (component.startsWith("via")) {
                         viaWrappers.add(component);
-                    } else if (primaryPlatform == null) {
+                        requiresLegacy = true;
+                        if (primaryPlatform == null) {
+                            String inferred = inferPlatformFromVia(component);
+                            if (inferred != null) {
+                                primaryPlatform = inferred;
+                            }
+                        }
+                        continue;
+                    }
+                    String normalizedPlatform = normalizePlatform(component);
+                    if (normalizedPlatform != null && primaryPlatform == null) {
+                        primaryPlatform = normalizedPlatform;
+                        continue;
+                    }
+                    if (primaryPlatform == null) {
                         primaryPlatform = component;
                     }
                 }
@@ -208,7 +233,8 @@ public final class ViaBrandTracker {
                 return new BrandMetadata(
                     orderedComponents.toArray(new String[0]),
                     primaryPlatform,
-                    viaWrappers.toArray(new String[0])
+                    viaWrappers.toArray(new String[0]),
+                    requiresLegacy
                 );
             }
 
@@ -226,6 +252,59 @@ public final class ViaBrandTracker {
 
             String[] viaWrappers() {
                 return this.viaWrappers;
+            }
+
+            boolean requiresLegacyParticles() {
+                return this.requiresLegacyParticles;
+            }
+
+            private static String normalizePlatform(String component) {
+                if (component == null || component.isEmpty()) {
+                    return null;
+                }
+                if (component.equals("fabric") || component.equals("fabricmc")) {
+                    return "fabric";
+                }
+                if (component.equals("quilt")) {
+                    return "quilt";
+                }
+                if (component.equals("forge")) {
+                    return "forge";
+                }
+                if (component.equals("neoforge")) {
+                    return "neoforge";
+                }
+                if (component.equals("vanilla")) {
+                    return "vanilla";
+                }
+                return null;
+            }
+
+            private static String inferPlatformFromVia(String viaComponent) {
+                if (viaComponent == null || viaComponent.length() <= 3) {
+                    return null;
+                }
+                String suffix = viaComponent.substring(3);
+                if (suffix.isEmpty()) {
+                    return null;
+                }
+                String simplified = suffix.replace("-", "").replace("_", "");
+                if (simplified.startsWith("fabric")) {
+                    return "fabric";
+                }
+                if (simplified.startsWith("forge")) {
+                    return "forge";
+                }
+                if (simplified.startsWith("neoforge")) {
+                    return "neoforge";
+                }
+                if (simplified.startsWith("quilt")) {
+                    return "quilt";
+                }
+                if (simplified.startsWith("vanilla")) {
+                    return "vanilla";
+                }
+                return null;
             }
         }
     }
