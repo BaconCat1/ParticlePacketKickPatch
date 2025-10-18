@@ -3,7 +3,6 @@ package org.bacon.noviaversionkick.network;
 import net.minecraft.network.ClientConnection;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bacon.noviaversionkick.mixin.ClientConnectionAccessor;
 
 import java.net.SocketAddress;
 import java.util.Collection;
@@ -25,45 +24,46 @@ public final class ViaBrandTracker {
     }
 
     public static void setBrand(ClientConnection connection, String brand) {
-        LOGGER.info(
+        // Downgrade noisy logs to DEBUG
+        LOGGER.debug(
             "setBrand called for connection={} with brand='{}'",
             describeConnection(connection),
             brand
         );
         if (connection == null) {
-            LOGGER.info("Ignoring setBrand call because connection was null");
+            LOGGER.debug("Ignoring setBrand call because connection was null");
             return;
         }
         synchronized (CLIENTS) {
             ClientInfo info = CLIENTS.get(connection);
             if (brand == null) {
                 if (info != null) {
-                    LOGGER.info("Clearing client brand for {}", describeConnection(connection));
+                    LOGGER.debug("Clearing client brand for {}", describeConnection(connection));
                     info.setBrand(null);
                     info.resetLegacyDecisionLog();
                     if (info.isEmpty()) {
-                        LOGGER.info("No remaining data for {}; removing client entry", describeConnection(connection));
+                        LOGGER.debug("No remaining data for {}; removing client entry", describeConnection(connection));
                         CLIENTS.remove(connection);
                     }
                 } else {
-                    LOGGER.info("No brand information stored for {}; nothing to clear", describeConnection(connection));
+                    LOGGER.debug("No brand information stored for {}; nothing to clear", describeConnection(connection));
                 }
                 return;
             }
             String sanitized = brand.strip();
-            LOGGER.info(
+            LOGGER.debug(
                 "Raw brand payload received from {}: '{}'",
                 describeConnection(connection),
                 brand
             );
             if (info == null) {
-                LOGGER.info("Creating new tracking entry for {}", describeConnection(connection));
+                LOGGER.debug("Creating new tracking entry for {}", describeConnection(connection));
                 info = new ClientInfo();
                 CLIENTS.put(connection, info);
             }
             info.setBrand(sanitized);
             info.resetLegacyDecisionLog();
-            LOGGER.info(
+            LOGGER.debug(
                 "Recorded sanitized client brand '{}' for {}",
                 sanitized,
                 describeConnection(connection)
@@ -72,39 +72,39 @@ public final class ViaBrandTracker {
     }
 
     public static void setClientModList(ClientConnection connection, Collection<String> mods) {
-        LOGGER.info(
+        LOGGER.debug(
             "setClientModList called for connection={} with {} mods",
             describeConnection(connection),
             mods == null ? 0 : mods.size()
         );
         if (connection == null) {
-            LOGGER.info("Ignoring setClientModList call because connection was null");
+            LOGGER.debug("Ignoring setClientModList call because connection was null");
             return;
         }
         synchronized (CLIENTS) {
             ClientInfo info = CLIENTS.get(connection);
             if (mods == null) {
                 if (info != null) {
-                    LOGGER.info("Clearing client mod list for {}", describeConnection(connection));
+                    LOGGER.debug("Clearing client mod list for {}", describeConnection(connection));
                     info.setClientMods(null);
                     info.resetLegacyDecisionLog();
                     if (info.isEmpty()) {
-                        LOGGER.info("No remaining data for {}; removing client entry", describeConnection(connection));
+                        LOGGER.debug("No remaining data for {}; removing client entry", describeConnection(connection));
                         CLIENTS.remove(connection);
                     }
                 } else {
-                    LOGGER.info("No mod list stored for {}; nothing to clear", describeConnection(connection));
+                    LOGGER.debug("No mod list stored for {}; nothing to clear", describeConnection(connection));
                 }
                 return;
             }
             if (info == null) {
-                LOGGER.info("Creating new tracking entry for {} to store mod list", describeConnection(connection));
+                LOGGER.debug("Creating new tracking entry for {} to store mod list", describeConnection(connection));
                 info = new ClientInfo();
                 CLIENTS.put(connection, info);
             }
             info.setClientMods(mods);
             info.resetLegacyDecisionLog();
-            LOGGER.info(
+            LOGGER.debug(
                 "Recorded {} client mods for {}: {}",
                 info.describeClientModCount(),
                 describeConnection(connection),
@@ -118,12 +118,12 @@ public final class ViaBrandTracker {
             return false;
         }
         ClientInfo info;
-        LOGGER.info("Evaluating particle encoding strategy for {}", describeConnection(connection));
+        LOGGER.debug("Evaluating particle encoding strategy for {}", describeConnection(connection));
         synchronized (CLIENTS) {
             info = CLIENTS.get(connection);
         }
         if (info == null) {
-            LOGGER.info("No client info stored for {}; defaulting to modern particles", describeConnection(connection));
+            LOGGER.debug("No client info stored for {}; defaulting to modern particles", describeConnection(connection));
             return false;
         }
         return info.shouldUseLegacyParticles(connection);
@@ -171,13 +171,13 @@ public final class ViaBrandTracker {
             if (previousDecision == null || previousDecision != legacy) {
                 this.lastLegacyDecision = legacy;
                 if (legacy) {
-                    LOGGER.info(
+                    LOGGER.debug(
                         "Using legacy particle encoding for {} (brand='{}')",
                         describeConnection(connection),
                         this.brand
                     );
                 } else {
-                    LOGGER.info(
+                    LOGGER.debug(
                         "Using modern particle encoding for {} (brand='{}')",
                         describeConnection(connection),
                         this.brand
@@ -212,7 +212,7 @@ public final class ViaBrandTracker {
             boolean fabricBrand = brandIndicatesFabric(this.brand);
             boolean fabricMods = modsIndicateFabric(this.clientMods);
 
-            LOGGER.info(
+            LOGGER.debug(
                 "Evaluating platform for {}: brandIndicatesFabric={}, modsIndicateFabric={}",
                 describeConnection(connection),
                 fabricBrand,
@@ -220,14 +220,14 @@ public final class ViaBrandTracker {
             );
 
             if (fabricBrand || fabricMods) {
-                LOGGER.info(
+                LOGGER.debug(
                     "Assuming Fabric client for {}; legacy particle encoding will be used",
                     describeConnection(connection)
                 );
                 return true;
             }
 
-            LOGGER.info(
+            LOGGER.debug(
                 "Fabric indicators not detected for {}; modern particles will be used",
                 describeConnection(connection)
             );

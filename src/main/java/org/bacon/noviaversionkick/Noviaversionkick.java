@@ -35,7 +35,8 @@ public class Noviaversionkick implements ModInitializer {
         ServerLoginNetworking.registerGlobalReceiver(channel, (MinecraftServer server, ServerLoginNetworkHandler handler, boolean understood, PacketByteBuf buf, ServerLoginNetworking.LoginSynchronizer synchronizer, PacketSender responseSender) -> {
             ClientConnection connection = ((ServerLoginNetworkHandlerAccessor) handler).noviaversionkick$getConnection();
             if (!understood || buf == null) {
-                LOGGER.info("Fabric mod list query on {} was not understood or payload missing (channel={})", describeConnection(connection), channel);
+                // Downgrade noisy informational messages to DEBUG so they don't spam the server console at INFO level
+                LOGGER.debug("Fabric mod list query on {} was not understood or payload missing (channel={})", describeConnection(connection), channel);
                 ViaBrandTracker.setClientModList(connection, null);
                 return;
             }
@@ -44,7 +45,7 @@ public class Noviaversionkick implements ModInitializer {
             try {
                 List<String> modIds = parseModListPayload(duplicate);
                 if (modIds.isEmpty()) {
-                    LOGGER.info("Received empty or unparseable Fabric mod list from {} on channel {}", describeConnection(connection), channel);
+                    LOGGER.debug("Received empty or unparseable Fabric mod list from {} on channel {}", describeConnection(connection), channel);
                     ViaBrandTracker.setClientModList(connection, null);
                     return;
                 }

@@ -67,8 +67,8 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
         try {
             RegistryByteBuf encoded = new RegistryByteBuf(backing, buf.getRegistryManager());
             ParticleTypes.PACKET_CODEC.encode(encoded, effect);
-            int particleId = encoded.readVarInt();
-            buf.writeVarInt(particleId);
+            int particleTypeId = Registries.PARTICLE_TYPE.getRawId(effect.getType());
+            buf.writeVarInt(particleTypeId);
             buf.writeBoolean(this.forceSpawn);
             noviaversionkick$writeAlignedPosition(buf, effect);
             buf.writeFloat(this.offsetX);
@@ -77,6 +77,7 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
             buf.writeFloat(this.speed);
             buf.writeInt(this.count);
 
+            encoded.readerIndex(0);
             buf.writeBytes(encoded);
         } finally {
             backing.release();
