@@ -8,6 +8,7 @@ import io.netty.buffer.Unpooled;
 import net.minecraft.particle.BlockStateParticleEffect;
 import net.minecraft.particle.ParticleEffect;
 import net.minecraft.particle.ParticleTypes;
+import net.minecraft.registry.Registries;
 import org.bacon.noviaversionkick.network.PacketConnectionAttachment;
 import org.bacon.noviaversionkick.network.ViaBrandTracker;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,6 +17,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import net.minecraft.util.Identifier;
 
 @Mixin(ParticleS2CPacket.class)
 public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachment {
@@ -57,6 +59,10 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
         if (effect == null) {
             return;
         }
+        if (noviaversionkick$shouldSuppress(effect)) {
+            noviaversionkick$writeSuppressed(buf);
+            return;
+        }
         ByteBuf backing = Unpooled.buffer();
         try {
             RegistryByteBuf encoded = new RegistryByteBuf(backing, buf.getRegistryManager());
@@ -75,6 +81,30 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
         } finally {
             backing.release();
         }
+    }
+
+    @Unique
+    private boolean noviaversionkick$shouldSuppress(ParticleEffect effect) {
+        Identifier id = Registries.PARTICLE_TYPE.getId(effect.getType());
+        if (id == null) {
+            return false;
+        }
+        return id.getPath().startsWith("falling_");
+    }
+
+    @Unique
+    private void noviaversionkick$writeSuppressed(RegistryByteBuf buf) {
+        int fallbackId = Registries.PARTICLE_TYPE.getRawId(ParticleTypes.POOF);
+        buf.writeVarInt(fallbackId);
+        buf.writeBoolean(false);
+        buf.writeDouble(this.x);
+        buf.writeDouble(this.y);
+        buf.writeDouble(this.z);
+        buf.writeFloat(0.0F);
+        buf.writeFloat(0.0F);
+        buf.writeFloat(0.0F);
+        buf.writeFloat(0.0F);
+        buf.writeInt(0);
     }
 
     @Unique
