@@ -1,6 +1,5 @@
 package org.bacon.noviaversionkick.mixin;
 
-import net.fabricmc.fabric.impl.networking.RegistrationPayload;
 import net.minecraft.network.packet.BrandCustomPayload;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
@@ -19,9 +18,6 @@ public abstract class ServerPlayNetworkHandlerMixin {
         if (payload instanceof BrandCustomPayload brandPayload) {
             ViaBrandTracker.setBrand(((ServerCommonNetworkHandlerAccessor) this).noviaversionkick$getConnection(), brandPayload.brand());
             return;
-        }
-        if (payload instanceof RegistrationPayload registration && registration.id() == RegistrationPayload.REGISTER) {
-            ViaBrandTracker.trackChannels(((ServerCommonNetworkHandlerAccessor) this).noviaversionkick$getConnection(), registration.channels());
         }
     }
 }

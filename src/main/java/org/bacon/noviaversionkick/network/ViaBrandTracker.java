@@ -1,12 +1,10 @@
 package org.bacon.noviaversionkick.network;
 
 import net.minecraft.network.ClientConnection;
-import net.minecraft.util.Identifier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.net.SocketAddress;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
@@ -24,7 +22,13 @@ public final class ViaBrandTracker {
     }
 
     public static void setBrand(ClientConnection connection, String brand) {
+        LOGGER.info(
+            "setBrand called for connection={} with brand='{}'",
+            describeConnection(connection),
+            brand
+        );
         if (connection == null) {
+            LOGGER.info("Ignoring setBrand call because connection was null");
             return;
         }
         synchronized (CLIENTS) {
@@ -35,34 +39,27 @@ public final class ViaBrandTracker {
                     info.setBrand(null);
                     info.resetLegacyDecisionLog();
                     if (info.isEmpty()) {
+                        LOGGER.info("No remaining data for {}; removing client entry", describeConnection(connection));
                         CLIENTS.remove(connection);
                     }
+                } else {
+                    LOGGER.info("No brand information stored for {}; nothing to clear", describeConnection(connection));
                 }
                 return;
             }
+            String sanitized = brand.strip();
             if (info == null) {
+                LOGGER.info("Creating new tracking entry for {}", describeConnection(connection));
                 info = new ClientInfo();
                 CLIENTS.put(connection, info);
             }
-            info.setBrand(brand);
+            info.setBrand(sanitized);
             info.resetLegacyDecisionLog();
-            LOGGER.info("Recorded client brand '{}' for {}", brand, describeConnection(connection));
-        }
-    }
-
-    public static void trackChannels(ClientConnection connection, Collection<Identifier> channels) {
-        if (connection == null || channels == null || channels.isEmpty()) {
-            return;
-        }
-        for (Identifier channel : channels) {
-            if (channel == null) {
-                continue;
-            }
-            if (isViaChannel(channel)) {
-                LOGGER.info("Detected Via channel '{}' from {}", channel, describeConnection(connection));
-                markViaModDetected(connection);
-                break;
-            }
+            LOGGER.info(
+                "Recorded sanitized client brand '{}' for {}",
+                sanitized,
+                describeConnection(connection)
+            );
         }
     }
 
@@ -71,35 +68,15 @@ public final class ViaBrandTracker {
             return false;
         }
         ClientInfo info;
+        LOGGER.info("Evaluating particle encoding strategy for {}", describeConnection(connection));
         synchronized (CLIENTS) {
             info = CLIENTS.get(connection);
         }
         if (info == null) {
+            LOGGER.info("No client info stored for {}; defaulting to modern particles", describeConnection(connection));
             return false;
         }
         return info.shouldUseLegacyParticles(connection);
-    }
-
-    private static void markViaModDetected(ClientConnection connection) {
-        synchronized (CLIENTS) {
-            ClientInfo info = CLIENTS.get(connection);
-            if (info == null) {
-                info = new ClientInfo();
-                CLIENTS.put(connection, info);
-            }
-            info.setViaModDetected();
-            info.resetLegacyDecisionLog();
-            LOGGER.info("Marking {} as having Via-based mod detected", describeConnection(connection));
-        }
-    }
-
-    private static boolean isViaChannel(Identifier identifier) {
-        String namespace = identifier.getNamespace();
-        if (namespace != null && namespace.toLowerCase(Locale.ROOT).startsWith("via")) {
-            return true;
-        }
-        String path = identifier.getPath();
-        return path != null && path.toLowerCase(Locale.ROOT).startsWith("via");
     }
 
     private static String describeConnection(ClientConnection connection) {
@@ -112,15 +89,10 @@ public final class ViaBrandTracker {
 
     private static final class ClientInfo {
         private volatile String brand;
-        private volatile boolean viaModDetected;
         private volatile Boolean lastLegacyDecision;
 
         void setBrand(String brand) {
             this.brand = brand;
-        }
-
-        void setViaModDetected() {
-            this.viaModDetected = true;
         }
 
         synchronized boolean shouldUseLegacyParticles(ClientConnection connection) {
@@ -130,17 +102,15 @@ public final class ViaBrandTracker {
                 this.lastLegacyDecision = legacy;
                 if (legacy) {
                     LOGGER.info(
-                        "Using legacy particle encoding for {} (brand='{}', viaModDetected={})",
+                        "Using legacy particle encoding for {} (brand='{}')",
                         describeConnection(connection),
-                        this.brand,
-                        this.viaModDetected
+                        this.brand
                     );
                 } else {
                     LOGGER.info(
-                        "Using modern particle encoding for {} (brand='{}', viaModDetected={})",
+                        "Using modern particle encoding for {} (brand='{}')",
                         describeConnection(connection),
-                        this.brand,
-                        this.viaModDetected
+                        this.brand
                     );
                 }
             }
@@ -152,22 +122,27 @@ public final class ViaBrandTracker {
         }
 
         boolean isEmpty() {
-            return this.brand == null && !this.viaModDetected;
+            return this.brand == null;
         }
 
         private boolean computeLegacyDecision() {
-            if (this.viaModDetected) {
-                return true;
-            }
             String brand = this.brand;
             if (brand == null) {
+                LOGGER.info("No brand recorded; modern particles will be used");
                 return false;
             }
             String normalized = brand.trim().toLowerCase(Locale.ROOT);
             if (normalized.isEmpty()) {
+                LOGGER.info("Brand string was empty after normalization; modern particles will be used");
                 return false;
             }
-            return normalized.contains("via") || normalized.contains("fabric");
+            boolean fabricDetected = normalized.contains("fabric");
+            LOGGER.info(
+                "Normalized brand='{}'; fabricDetected={}",
+                normalized,
+                fabricDetected
+            );
+            return fabricDetected;
         }
     }
 }
