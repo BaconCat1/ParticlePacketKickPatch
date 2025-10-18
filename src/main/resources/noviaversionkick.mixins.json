@@ -4,6 +4,10 @@
   "package": "org.bacon.noviaversionkick.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ClientConnectionMixin",
+    "ParticleS2CPacketMixin",
+    "ServerCommonNetworkHandlerAccessor",
+    "ServerPlayNetworkHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
