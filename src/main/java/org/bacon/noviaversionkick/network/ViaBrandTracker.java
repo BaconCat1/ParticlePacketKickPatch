@@ -6,12 +6,9 @@ import org.apache.logging.log4j.Logger;
 import org.bacon.noviaversionkick.mixin.ClientConnectionAccessor;
 
 import java.net.SocketAddress;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -212,222 +209,68 @@ public final class ViaBrandTracker {
         }
 
         private boolean computeLegacyDecision(ClientConnection connection) {
-            String brand = this.brand;
-            BrandMetadata metadata = BrandMetadata.fromRawBrand(brand);
-            if (!metadata.hasComponents()) {
-                LOGGER.info("Brand string was empty after normalization; modern particles will be used");
-            }
+            boolean fabricBrand = brandIndicatesFabric(this.brand);
+            boolean fabricMods = modsIndicateFabric(this.clientMods);
+
             LOGGER.info(
-                "Brand analysis for {}: components={}, primaryPlatform='{}', viaWrappers={}",
+                "Evaluating platform for {}: brandIndicatesFabric={}, modsIndicateFabric={}",
                 describeConnection(connection),
-                metadata.describeComponents(),
-                metadata.primaryPlatform(),
-                Arrays.toString(metadata.viaWrappers())
+                fabricBrand,
+                fabricMods
             );
 
-            Set<String> mods = this.clientMods;
-            List<String> viaMods = mods == null ? List.of() : mods.stream().filter(id -> id.startsWith("via")).toList();
-
-            boolean requiresLegacy = metadata.requiresLegacyParticles() || !viaMods.isEmpty();
-            String primaryPlatform = metadata.primaryPlatform();
-            if (primaryPlatform == null) {
-                primaryPlatform = inferPlatformFromMods(mods);
-            }
-
-            if (requiresLegacy) {
-                List<String> viaSources = new ArrayList<>();
-                viaSources.addAll(Arrays.asList(metadata.viaWrappers()));
-                viaSources.addAll(viaMods);
+            if (fabricBrand || fabricMods) {
                 LOGGER.info(
-                    "Detected Via wrapper(s) {} with base platform '{}'; legacy particle encoding will be used to avoid the 9-byte overflow",
-                    viaSources,
-                    primaryPlatform
+                    "Assuming Fabric client for {}; legacy particle encoding will be used",
+                    describeConnection(connection)
                 );
                 return true;
             }
 
-            if (primaryPlatform == null) {
-                LOGGER.info("Unable to determine a primary platform from brand or mod list; defaulting to modern particles");
-                return false;
-            }
-
             LOGGER.info(
-                "Primary platform '{}' does not require legacy particle encoding; modern particles will be used",
-                primaryPlatform
+                "Fabric indicators not detected for {}; modern particles will be used",
+                describeConnection(connection)
             );
             return false;
         }
 
-        private static String inferPlatformFromMods(Set<String> mods) {
-            if (mods == null || mods.isEmpty()) {
-                return null;
+        private static boolean brandIndicatesFabric(String brand) {
+            if (brand == null) {
+                return false;
             }
-            if (mods.contains("fabricloader")) {
-                return "fabric";
+            String sanitized = brand.trim();
+            if (sanitized.isEmpty()) {
+                return false;
             }
-            if (mods.contains("quilt_loader") || mods.contains("quiltloader")) {
-                return "quilt";
+            String[] fragments = sanitized.split("\\u0000");
+            for (String fragment : fragments) {
+                if (fragment == null) {
+                    continue;
+                }
+                String normalized = fragment.trim().toLowerCase(Locale.ROOT);
+                if (normalized.isEmpty()) {
+                    continue;
+                }
+                if (normalized.contains("fabric")) {
+                    return true;
+                }
             }
-            if (mods.contains("forge")) {
-                return "forge";
-            }
-            if (mods.contains("neoforge")) {
-                return "neoforge";
-            }
-            return null;
+            return false;
         }
 
-        private static final class BrandMetadata {
-            private final String[] components;
-            private final String primaryPlatform;
-            private final String[] viaWrappers;
-            private final boolean requiresLegacyParticles;
-
-            private BrandMetadata(String[] components, String primaryPlatform, String[] viaWrappers, boolean requiresLegacyParticles) {
-                this.components = components;
-                this.primaryPlatform = primaryPlatform;
-                this.viaWrappers = viaWrappers;
-                this.requiresLegacyParticles = requiresLegacyParticles;
+        private static boolean modsIndicateFabric(Set<String> mods) {
+            if (mods == null || mods.isEmpty()) {
+                return false;
             }
-
-            static BrandMetadata fromRawBrand(String rawBrand) {
-                if (rawBrand == null) {
-                    LOGGER.info("Brand payload was null; treating as empty");
-                    return new BrandMetadata(new String[0], null, new String[0], false);
-                }
-                String sanitized = rawBrand.trim();
-                if (sanitized.isEmpty()) {
-                    LOGGER.info("Brand payload '{}' was empty after trim; treating as empty", rawBrand);
-                    return new BrandMetadata(new String[0], null, new String[0], false);
-                }
-                String[] fragments = sanitized.split("\\u0000");
-                LOGGER.info(
-                    "Split raw brand payload '{}' into {} fragment(s): {}",
-                    rawBrand,
-                    fragments.length,
-                    Arrays.toString(fragments)
-                );
-                Set<String> orderedComponents = new LinkedHashSet<>();
-                for (String fragment : fragments) {
-                    if (fragment == null) {
-                        continue;
-                    }
-                    String trimmed = fragment.trim();
-                    if (trimmed.isEmpty()) {
-                        continue;
-                    }
-                    orderedComponents.add(trimmed.toLowerCase(Locale.ROOT));
-                }
-                if (orderedComponents.isEmpty()) {
-                    orderedComponents.add(sanitized.toLowerCase(Locale.ROOT));
-                }
-                LOGGER.info(
-                    "Normalized brand fragments into ordered component list: {}",
-                    Arrays.toString(orderedComponents.toArray(new String[0]))
-                );
-                List<String> viaWrappers = new ArrayList<>();
-                String primaryPlatform = null;
-                boolean requiresLegacy = false;
-                for (String component : orderedComponents) {
-                    if (component.startsWith("via")) {
-                        viaWrappers.add(component);
-                        requiresLegacy = true;
-                        if (primaryPlatform == null) {
-                            String inferred = inferPlatformFromVia(component);
-                            if (inferred != null) {
-                                primaryPlatform = inferred;
-                            }
-                        }
-                        continue;
-                    }
-                    String normalizedPlatform = normalizePlatform(component);
-                    if (normalizedPlatform != null && primaryPlatform == null) {
-                        primaryPlatform = normalizedPlatform;
-                        continue;
-                    }
-                    if (primaryPlatform == null) {
-                        primaryPlatform = component;
-                    }
-                }
-                if (primaryPlatform == null && !orderedComponents.isEmpty()) {
-                    primaryPlatform = orderedComponents.iterator().next();
-                }
-                return new BrandMetadata(
-                    orderedComponents.toArray(new String[0]),
-                    primaryPlatform,
-                    viaWrappers.toArray(new String[0]),
-                    requiresLegacy
-                );
+            if (mods.contains("fabricloader")) {
+                return true;
             }
-
-            boolean hasComponents() {
-                return this.components.length > 0;
+            for (String mod : mods) {
+                if (mod != null && mod.contains("fabric")) {
+                    return true;
+                }
             }
-
-            String describeComponents() {
-                return Arrays.toString(this.components);
-            }
-
-            String primaryPlatform() {
-                return this.primaryPlatform;
-            }
-
-            String[] viaWrappers() {
-                return this.viaWrappers;
-            }
-
-            boolean requiresLegacyParticles() {
-                return this.requiresLegacyParticles;
-            }
-
-            private static String normalizePlatform(String component) {
-                if (component == null || component.isEmpty()) {
-                    return null;
-                }
-                if (component.equals("fabric") || component.equals("fabricmc")) {
-                    return "fabric";
-                }
-                if (component.equals("quilt")) {
-                    return "quilt";
-                }
-                if (component.equals("forge")) {
-                    return "forge";
-                }
-                if (component.equals("neoforge")) {
-                    return "neoforge";
-                }
-                if (component.equals("vanilla")) {
-                    return "vanilla";
-                }
-                return null;
-            }
-
-            private static String inferPlatformFromVia(String viaComponent) {
-                if (viaComponent == null || viaComponent.length() <= 3) {
-                    return null;
-                }
-                String suffix = viaComponent.substring(3);
-                if (suffix.isEmpty()) {
-                    return null;
-                }
-                String simplified = suffix.replace("-", "").replace("_", "");
-                if (simplified.startsWith("fabric")) {
-                    return "fabric";
-                }
-                if (simplified.startsWith("forge")) {
-                    return "forge";
-                }
-                if (simplified.startsWith("neoforge")) {
-                    return "neoforge";
-                }
-                if (simplified.startsWith("quilt")) {
-                    return "quilt";
-                }
-                if (simplified.startsWith("vanilla")) {
-                    return "vanilla";
-                }
-                return null;
-            }
+            return false;
         }
     }
 }
