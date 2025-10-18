@@ -3,9 +3,10 @@ package org.bacon.noviaversionkick.mixin;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
-import net.minecraft.particle.ParticleEffect;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import net.minecraft.particle.BlockStateParticleEffect;
+import net.minecraft.particle.ParticleEffect;
 import net.minecraft.particle.ParticleTypes;
 import org.bacon.noviaversionkick.network.PacketConnectionAttachment;
 import org.bacon.noviaversionkick.network.ViaBrandTracker;
@@ -29,6 +30,8 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
     @Shadow private boolean forceSpawn;
     @Shadow private ParticleEffect parameters;
     @Unique private ClientConnection noviaversionkick$connection;
+    @Unique private static final double noviaversionkick$SURFACE_THRESHOLD = 0.3D;
+    @Unique private static final double noviaversionkick$AXIS_EPSILON = 1.0E-6D;
 
     @Override
     public void noviaversionkick$setConnection(ClientConnection connection) {
@@ -59,12 +62,9 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
             RegistryByteBuf encoded = new RegistryByteBuf(backing, buf.getRegistryManager());
             ParticleTypes.PACKET_CODEC.encode(encoded, effect);
             int particleId = encoded.readVarInt();
-
             buf.writeVarInt(particleId);
             buf.writeBoolean(this.forceSpawn);
-            buf.writeDouble(this.x);
-            buf.writeDouble(this.y);
-            buf.writeDouble(this.z);
+            noviaversionkick$writeAlignedPosition(buf, effect);
             buf.writeFloat(this.offsetX);
             buf.writeFloat(this.offsetY);
             buf.writeFloat(this.offsetZ);
@@ -75,5 +75,46 @@ public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachme
         } finally {
             backing.release();
         }
+    }
+
+    @Unique
+    private void noviaversionkick$writeAlignedPosition(RegistryByteBuf buf, ParticleEffect effect) {
+        if (!(effect instanceof BlockStateParticleEffect)) {
+            buf.writeDouble(this.x);
+            buf.writeDouble(this.y);
+            buf.writeDouble(this.z);
+            return;
+        }
+
+        double posX = this.x;
+        double posY = this.y;
+        double posZ = this.z;
+
+        double baseX = Math.floor(posX);
+        double baseY = Math.floor(posY);
+        double baseZ = Math.floor(posZ);
+
+        double fractionalX = posX - baseX;
+        double fractionalY = posY - baseY;
+        double fractionalZ = posZ - baseZ;
+
+        double distanceX = Math.min(fractionalX, 1.0D - fractionalX);
+        double distanceY = Math.min(fractionalY, 1.0D - fractionalY);
+        double distanceZ = Math.min(fractionalZ, 1.0D - fractionalZ);
+
+        double nearest = Math.min(distanceX, Math.min(distanceY, distanceZ));
+        if (nearest <= noviaversionkick$SURFACE_THRESHOLD) {
+            if (distanceX <= nearest + noviaversionkick$AXIS_EPSILON) {
+                posX = baseX + (fractionalX < 0.5D ? 0.0D : 1.0D);
+            } else if (distanceY <= nearest + noviaversionkick$AXIS_EPSILON) {
+                posY = baseY + (fractionalY < 0.5D ? 0.0D : 1.0D);
+            } else {
+                posZ = baseZ + (fractionalZ < 0.5D ? 0.0D : 1.0D);
+            }
+        }
+
+        buf.writeDouble(posX);
+        buf.writeDouble(posY);
+        buf.writeDouble(posZ);
     }
 }
