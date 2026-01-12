@@ -17,7 +17,6 @@ public abstract class ServerPlayNetworkHandlerMixin {
         CustomPayload payload = packet.payload();
         if (payload instanceof BrandCustomPayload brandPayload) {
             ViaBrandTracker.setBrand(((ServerCommonNetworkHandlerAccessor) this).noviaversionkick$getConnection(), brandPayload.brand());
-            return;
         }
     }
 }

@@ -11,6 +11,7 @@ import net.minecraft.particle.ParticleTypes;
 import net.minecraft.registry.Registries;
 import org.bacon.noviaversionkick.network.PacketConnectionAttachment;
 import org.bacon.noviaversionkick.network.ViaBrandTracker;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -21,15 +22,25 @@ import net.minecraft.util.Identifier;
 
 @Mixin(ParticleS2CPacket.class)
 public abstract class ParticleS2CPacketMixin implements PacketConnectionAttachment {
+    @Final
     @Shadow private double x;
+    @Final
     @Shadow private double y;
+    @Final
     @Shadow private double z;
+    @Final
     @Shadow private float offsetX;
+    @Final
     @Shadow private float offsetY;
+    @Final
     @Shadow private float offsetZ;
+    @Final
     @Shadow private float speed;
+    @Final
     @Shadow private int count;
+    @Final
     @Shadow private boolean forceSpawn;
+    @Final
     @Shadow private ParticleEffect parameters;
     @Unique private ClientConnection noviaversionkick$connection;
     @Unique private static final double noviaversionkick$SURFACE_THRESHOLD = 0.3D;

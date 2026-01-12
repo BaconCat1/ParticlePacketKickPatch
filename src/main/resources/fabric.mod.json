@@ -11,7 +11,7 @@
   "license": "Apache-2.0",
   "icon": "assets/noviaversionkick/icon.png",
 
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
     "fabric-datagen": ["org.bacon.noviaversionkick.client.NoviaversionkickDataGenerator"],
     "main": ["org.bacon.noviaversionkick.Noviaversionkick"]
@@ -26,8 +26,8 @@
   ],
 
   "depends": {
-    "fabricloader": ">=${loader_version}",
+    "fabricloader": "*",
     "fabric": "*",
-    "minecraft": "${minecraft_version}"
+    "minecraft": ">=1.21.8"
   }
 }
